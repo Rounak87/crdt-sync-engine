@@ -1,0 +1,6 @@
+node_modules/
+sync-engine-project-context.md
+dist/
+.env
+*.log
+demo.ts
