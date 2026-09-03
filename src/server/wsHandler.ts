@@ -1,14 +1,15 @@
 import { WebSocket, WebSocketServer } from 'ws';
-import { ClientMessage } from '../protocol/messages.js';
+import type { ClientMessage } from '../protocol/messages.js';
 import {
   getOrCreateDoc,
   addClient,
   removeClient,
   getOps,
+  getStateVector,
+  getMissingOpsDelta,
   applyAndBroadcast,
 } from './docManager.js';
 
-// Tracks which docId each WebSocket connection is subscribed to.
 const clientDocs = new Map<WebSocket, string>();
 
 export function attachWebSocketServer(wss: WebSocketServer): void {
@@ -24,13 +25,35 @@ export function attachWebSocketServer(wss: WebSocketServer): void {
 
           await getOrCreateDoc(docId);
 
-          // Register client BEFORE sending snapshot to avoid missing concurrent ops.
-          // The RGA's idempotency means a duplicate op on replay is harmless.
           addClient(docId, ws);
           clientDocs.set(ws, docId);
 
-          ws.send(JSON.stringify({ type: 'snapshot', ops: getOps(docId) }));
+          ws.send(
+            JSON.stringify({
+              type: 'snapshot',
+              ops: getOps(docId),
+              stateVector: getStateVector(docId),
+            })
+          );
           console.log(`[ws] client joined doc "${docId}" — ${getOps(docId).length} ops in history`);
+
+        } else if (msg.type === 'sync-request') {
+          const { docId, stateVector } = msg;
+          await getOrCreateDoc(docId);
+          addClient(docId, ws);
+          clientDocs.set(ws, docId);
+
+          const missingOps = await getMissingOpsDelta(docId, stateVector);
+          const serverVector = getStateVector(docId);
+
+          ws.send(
+            JSON.stringify({
+              type: 'sync-response',
+              missingOps,
+              stateVector: serverVector,
+            })
+          );
+          console.log(`[ws] client sync-request for doc "${docId}" — streaming ${missingOps.length} delta ops`);
 
         } else if (msg.type === 'op') {
           const docId = clientDocs.get(ws);

@@ -1,4 +1,4 @@
-import { Op } from '../crdt/types.js';
+import type { Op, StateVector } from '../crdt/types.js';
 
 // ── Client → Server ───────────────────────────────────────────────────────────
 
@@ -12,13 +12,20 @@ export interface OpMessage {
   op: Op;
 }
 
-export type ClientMessage = JoinMessage | OpMessage;
+export interface SyncRequestMessage {
+  type: 'sync-request';
+  docId: string;
+  stateVector: StateVector;
+}
+
+export type ClientMessage = JoinMessage | OpMessage | SyncRequestMessage;
 
 // ── Server → Client ───────────────────────────────────────────────────────────
 
 export interface SnapshotMessage {
   type: 'snapshot';
   ops: Op[];
+  stateVector: StateVector;
 }
 
 export interface ServerOpMessage {
@@ -26,9 +33,15 @@ export interface ServerOpMessage {
   op: Op;
 }
 
+export interface SyncResponseMessage {
+  type: 'sync-response';
+  missingOps: Op[];
+  stateVector: StateVector;
+}
+
 export interface ErrorMessage {
   type: 'error';
   message: string;
 }
 
-export type ServerMessage = SnapshotMessage | ServerOpMessage | ErrorMessage;
+export type ServerMessage = SnapshotMessage | ServerOpMessage | SyncResponseMessage | ErrorMessage;

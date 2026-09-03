@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "dev": "npx tsx watch src/server/index.ts",
+    "client:dev": "npm --prefix client run dev",
+    "client:build": "npm --prefix client run build",
     "start": "npx tsx src/server/index.ts",
+    "benchmark": "npx tsx src/benchmark.ts",
     "demo": "npx tsx src/demo.ts",
     "test": "npx vitest run",
     "typecheck": "npx tsc --noEmit"

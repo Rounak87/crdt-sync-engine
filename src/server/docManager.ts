@@ -1,16 +1,14 @@
 import { WebSocket } from 'ws';
 import { RGA } from '../crdt/RGA.js';
-import { Op } from '../crdt/types.js';
-import { saveOp, getOpsForDoc } from '../db/opStore.js';
+import type { Op, StateVector } from '../crdt/types.js';
+import { saveOp, getOpsForDoc, getOpsDeltaForDoc } from '../db/opStore.js';
 
 interface DocState {
   rga: RGA;
   clients: Set<WebSocket>;
-  ops: Op[]; // in-memory op log — used for snapshot delivery to new clients
+  ops: Op[];
 }
 
-// One entry per active document. Persists across client connects/disconnects.
-// On server restart, documents are lazily reloaded from Postgres on first access.
 const docs = new Map<string, DocState>();
 
 export async function getOrCreateDoc(docId: string): Promise<DocState> {
@@ -37,7 +35,23 @@ export function getOps(docId: string): Op[] {
   return docs.get(docId)?.ops ?? [];
 }
 
-// Apply op to in-memory RGA, persist to Postgres, broadcast to all other clients.
+export function getStateVector(docId: string): StateVector {
+  return docs.get(docId)?.rga.getStateVector() ?? {};
+}
+
+/** Compute delta ops missing from client's stateVector */
+export async function getMissingOpsDelta(docId: string, clientVector: StateVector): Promise<Op[]> {
+  const docOps = docs.get(docId)?.ops;
+  if (docOps) {
+    return docOps.filter((op) => {
+      const targetId = op.type === 'insert' ? op.id : op.targetId;
+      const clientKnownCounter = clientVector[targetId.clientId] ?? 0;
+      return targetId.counter > clientKnownCounter;
+    });
+  }
+  return getOpsDeltaForDoc(docId, clientVector);
+}
+
 export async function applyAndBroadcast(
   docId: string,
   op: Op,
